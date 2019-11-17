@@ -1,16 +1,14 @@
 #version 330 core
 layout(location = 0) in vec3 vertPos;
-layout(location = 1) in vec2 vertTex;
+layout(location = 1) in vec3 vertNor;
+layout(location = 2) in vec2 vertTex;
 
 uniform mat4 P;
 uniform mat4 V;
 uniform mat4 M;
 out vec3 vertex_pos;
-out vec2 vertex_tex;
 out vec3 vertex_normal;
-uniform sampler2D tex;
-
-uniform vec3 camoff;
+out vec2 vertex_tex;
 
 float hash(float n) { return fract(sin(n) * 753.5453123); }
 float snoise(vec3 x)
@@ -47,38 +45,14 @@ float getHeight(vec3 pos)
 	return height *= 20;
 }
 
-vec3 getNormal(vec3 pos)
-{
-	vec3 a,b,c;
-    a =  pos;
-    b =  a + vec3(1,0,0);
-    c =  a + vec3(0,0,1);
-
-    a.y += getHeight(a.xyz);
-    b.y += getHeight(b.xyz);
-    c.y += getHeight(c.xyz);
-
-    vec3 ac = a-c;
-	vec3 bc = b-c;
-
-    return cross(ac.xyz,bc.xyz);
-}
-
 void main()
 {
-	vec2 texcoords=vertTex;
-	float t=1./100.;
-	texcoords -= vec2(camoff.x,camoff.z)*t;
-	vec4 tpos =  vec4(vertPos, 1.0);
-	tpos.z -= camoff.z;
-	tpos.x -= camoff.x;
-
+	vertex_normal = vec4(M * vec4(vertNor,0.0)).xyz;
+	vec4 tpos =  M * vec4(vertPos, 1.0);
 	tpos =  M * tpos;
 	tpos.y += getHeight(tpos.xyz);
-
+	
 	gl_Position = P * V * tpos;
-
 	vertex_pos = tpos.xyz;
 	vertex_tex = vertTex;
-	vertex_normal = getNormal(vertex_pos);
 }
