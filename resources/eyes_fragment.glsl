@@ -41,10 +41,10 @@ void main()
 		spec = pow(spec, 10);
 
 		//final
-		color.rgb = baseColor * (0.05 + diffuse * 0.3) + lightColor*spec*3;
+		color.rgb = baseColor * (0.2 + diffuse * 0.6) + lightColor*spec*3;
 		color.a = 1;
 
-		color.rgb = vec3(0, 0, 0.3);// * normalize(distance(vertex_pos, -campos));
+		color.rgb = vec3(0.8, 0, 0);
 	if (theta > outerCutoff && f == 1)
 	{
 
@@ -63,7 +63,6 @@ void main()
 //		//color.rgb = vec3(intensity, intensity, intensity);1/length(campos - vertex_pos)*20 * 
 		color.a = 1;
 		color.rgb = Flcolor * intensity * 0.7 + vec3(0.1, 0.1, 0.1);
-
 	}
 
 //if (theta > outerCutoff)

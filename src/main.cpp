@@ -13,13 +13,14 @@
 
 using namespace std;
 using namespace glm;
-shared_ptr<Shape> skySphere, bunny, tree;
-vector<glm::mat4> treeModels;
+shared_ptr<Shape> sphere, bunny, tree;
 vector<glm::mat4> bunnyModels;
 vector<glm::vec2> dirs;
 constexpr int MESHSIZE = 100;
-constexpr int NUMTREES = 75;
-constexpr int NUMBUNNIES = 5;
+constexpr int TREEMESHSIZE = 5;
+constexpr int TREEDISTANCE = 5;
+constexpr int NUMBUNNIES = 2;
+constexpr int NUMSNOW = 10000;
 
 float randFloat(float a, float b) {
 	float random = ((float)rand()) / (float)RAND_MAX;
@@ -27,7 +28,6 @@ float randFloat(float a, float b) {
 	float r = random * diff;
 	return a + r;
 }
-
 double get_last_elapsed_time()
 {
 	static double lasttime = glfwGetTime();
@@ -40,10 +40,11 @@ class camera
 {
 public:
 	glm::vec3 pos, rot;
-	int w, a, s, d, i, m;
+	glm::vec4 dir;
+	int w, a, s, d, i, m, f;
 	camera()
 	{
-		w = a = s = d = i = m = 0;
+		w = a = s = d = i = m = f = 0;
 		pos = rot = glm::vec3(0, 0, 0);
 	}
 	glm::mat4 process(double ftime)
@@ -66,9 +67,9 @@ public:
 		rot.x += xangle;
 		glm::mat4 Ry = glm::rotate(glm::mat4(1), rot.y, glm::vec3(0, 1, 0));
 		glm::mat4 Rx = glm::rotate(glm::mat4(1), rot.x, glm::vec3(1, 0, 0));
-		glm::vec4 dir = glm::vec4(0, 0, speed, 1);
-		dir = dir * Rx * Ry;
+		dir = glm::vec4(0, 0, speed, 1) * Rx * Ry;
 		pos += glm::vec3(dir.x, dir.y, dir.z);
+		dir = glm::vec4(0, 0, 1, 1) * Rx * Ry;
 		glm::mat4 T = glm::translate(glm::mat4(1), pos);
 		return Rx * Ry * T;
 	}
@@ -77,18 +78,22 @@ camera mycam;
 
 class Application : public EventCallbacks
 {
-
 public:
 
 	WindowManager * windowManager = nullptr;
 
-	std::shared_ptr<Program> bunnyprog, treeprog, heightprog, skyprog;
-	GLuint VertexArrayID;
-
-	// Data necessary to give our box to OpenGL
-	GLuint MeshPosID, MeshTexID, IndexBufferIDBox;
+	std::shared_ptr<Program> bunnyprog, treeprog, heightprog, skyprog, bunnyEyesprog, snowprog;
+	
+	GLuint VertexArrayID, SnowArrayID, VertexBufferID;
+	GLuint MeshPosID, MeshTexID, IndexBufferIDBox;//, insBufID;
 
 	GLuint Texture, Texture2, Texture3;
+
+	struct flashLight {
+		vec3 pos;
+		vec3 dir;
+		float cutoff;
+	};
 
 	void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods)
 	{
@@ -144,6 +149,13 @@ public:
 		{
 			mycam.m = 0;
 		}
+		if (key == GLFW_KEY_F && action == GLFW_PRESS)
+		{
+			if (mycam.f == 1)
+				mycam.f = 0;
+			else
+				mycam.f = 1;
+		}
 	}
 	void mouseCallback(GLFWwindow *window, int button, int action, int mods) {}
 	void resizeCallback(GLFWwindow *window, int in_width, int in_height)
@@ -153,18 +165,9 @@ public:
 		glViewport(0, 0, width, height);
 	}
 	
-	void init_tree_mMatricies()
-	{
-		for (int i = 0; i < NUMTREES; i++)
-		{
-			glm::mat4 STree = glm::scale(glm::mat4(1.0f), glm::vec3(3 + randFloat(-0.4, 0.4), 3, 3 + randFloat(-0.4, 0.4)));
-			glm::mat4 TTree = translate(glm::mat4(1), glm::vec3(rand() % 24 - 12, 2, rand() % 24 - 12));
-			treeModels.push_back(TTree * STree);
-		}
-	}
 	void init_bunny_mMatricies()
 	{
-		for (int i = 0; i < NUMTREES; i++)
+		for (int i = 0; i < NUMBUNNIES; i++)
 		{
 			glm::mat4 TBunny = translate(glm::mat4(1), glm::vec3(rand() % 24 - 12, 0, rand() % 24 - 12));
 			bunnyModels.push_back(TBunny);
@@ -173,11 +176,10 @@ public:
 	}
 	void init_mesh()
 	{
-		//generate the VAO
 		glGenVertexArrays(1, &VertexArrayID);
 		glBindVertexArray(VertexArrayID);
 
-		//generate vertex buffer to hand off to OGL
+		//verticies
 		glGenBuffers(1, &MeshPosID);
 		glBindBuffer(GL_ARRAY_BUFFER, MeshPosID);
 		vec3 vertices[MESHSIZE * MESHSIZE * 4];
@@ -192,6 +194,7 @@ public:
 		glBufferData(GL_ARRAY_BUFFER, sizeof(vec3) * MESHSIZE * MESHSIZE * 4, vertices, GL_DYNAMIC_DRAW);
 		glEnableVertexAttribArray(0);
 		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+
 		//tex coords
 		float t = 1. / 100;
 		vec2 tex[MESHSIZE * MESHSIZE * 4];
@@ -204,14 +207,13 @@ public:
 				tex[x * 4 + y*MESHSIZE * 4 + 3] = vec2(0.0, t)+ vec2(x, y)*t;
 			}
 		glGenBuffers(1, &MeshTexID);
-		//set the current state to focus on our vertex buffer
 		glBindBuffer(GL_ARRAY_BUFFER, MeshTexID);
 		glBufferData(GL_ARRAY_BUFFER, sizeof(vec2) * MESHSIZE * MESHSIZE * 4, tex, GL_STATIC_DRAW);
 		glEnableVertexAttribArray(1);
 		glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
 
+		//indicies
 		glGenBuffers(1, &IndexBufferIDBox);
-		//set the current state to focus on our vertex buffer
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, IndexBufferIDBox);
 		GLushort elements[MESHSIZE * MESHSIZE * 6];
 		int ind = 0;
@@ -227,29 +229,8 @@ public:
 		glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLushort)*MESHSIZE * MESHSIZE * 6, elements, GL_STATIC_DRAW);
 		glBindVertexArray(0);
 	}
-
-	void initGeom()
+	void initTex(const string &resourceDirectory)
 	{
-		string resourceDirectory = "../resources";
-		init_mesh();
-
-		skySphere = make_shared<Shape>();
-		skySphere->loadMesh(resourceDirectory + "/sphere.obj");
-		skySphere->resize();
-		skySphere->init();
-
-		tree = make_shared<Shape>();
-		tree->loadMesh(resourceDirectory + "/tree.obj");
-		tree->resize();
-		tree->init();
-		init_tree_mMatricies();
-
-		bunny = make_shared<Shape>();
-		bunny->loadMesh(resourceDirectory + "/bunny.obj");
-		bunny->resize();
-		bunny->init();
-		init_bunny_mMatricies();
-
 		int width, height, channels;
 		char filepath[1000];
 
@@ -295,25 +276,97 @@ public:
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
 		glGenerateMipmap(GL_TEXTURE_2D);
 
-		////[TWOTEXTURES]
-		////set the 2 textures to the correct samplers in the fragment shader:
-		//GLuint Tex1Location = glGetUniformLocation(prog->pid, "tex");//tex, tex2... sampler in the fragment shader
-		//GLuint Tex2Location = glGetUniformLocation(prog->pid, "tex2");
-		//// Then bind the uniform samplers to texture units:
-		//glUseProgram(prog->pid);
-		//glUniform1i(Tex1Location, 0);
-		//glUniform1i(Tex2Location, 1);
+		GLuint Tex1Location = glGetUniformLocation(skyprog->pid, "tex");
+		glUseProgram(skyprog->pid);
+		glUniform1i(Tex1Location, 0);
 
-		//Tex1Location = glGetUniformLocation(heightprog->pid, "tex");//tex, tex2... sampler in the fragment shader
-		//// Then bind the uniform samplers to texture units:
-		//glUseProgram(heightprog->pid);
-		//glUniform1i(Tex1Location, 0);
+		Tex1Location = glGetUniformLocation(treeprog->pid, "tex");
+		glUseProgram(treeprog->pid);
+		glUniform1i(Tex1Location, 0);
 
-		//glEnable(GL_BLEND);
-		//glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		Tex1Location = glGetUniformLocation(heightprog->pid, "tex");
+		glUseProgram(heightprog->pid);
+		glUniform1i(Tex1Location, 0);
+
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	}
 
-	//General OGL initialization - set OGL state here
+	void initSnow()
+	{
+		//VAO
+		glGenVertexArrays(1, &SnowArrayID);
+		glBindVertexArray(SnowArrayID);
+
+		//verticies
+		glGenBuffers(1, &VertexBufferID);
+		glBindBuffer(GL_ARRAY_BUFFER, VertexBufferID);
+
+		vector<float> points;
+		for (int i = 0; i < NUMSNOW; i++)
+			points.push_back(randFloat(-1, 1));
+
+		glBufferData(GL_ARRAY_BUFFER, sizeof(float) * points.size(), points.data(), GL_DYNAMIC_DRAW);
+		glEnableVertexAttribArray(0);
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+
+		glBindVertexArray(0);
+	}
+
+	void initGeom()
+	{
+		string resourceDirectory = "../resources";
+		init_mesh();
+
+		sphere = make_shared<Shape>();
+		sphere->loadMesh(resourceDirectory + "/sphere.obj");
+		sphere->resize();
+		sphere->init();
+		
+		tree = make_shared<Shape>();
+		tree->loadMesh(resourceDirectory + "/tree.obj");
+		tree->resize();
+		//tree->initInstance(treeprog, TREEMESHSIZE, TREEDISTANCE);
+		tree->init();
+		
+		//glBindVertexArray(tree->vaoID[0]);
+		//glm::vec4* instBuf = new glm::vec4[TREEMESHSIZE * TREEMESHSIZE];
+
+		//int i = 0;
+		//for (int x = -TREEMESHSIZE / 2; x < TREEMESHSIZE / 2; x++)
+		//	for (int z = -TREEMESHSIZE / 2; z < TREEMESHSIZE / 2; z++)
+		//	{
+		//		instBuf[i] = glm::vec4(x * TREEDISTANCE, 3, z * TREEDISTANCE, 1);
+		//		i++;
+		//	}
+		//glGenBuffers(1, &insBufID);
+		//glBindBuffer(GL_ARRAY_BUFFER, insBufID);
+		//glBufferData(GL_ARRAY_BUFFER, TREEMESHSIZE * sizeof(glm::vec4), instBuf, GL_STATIC_DRAW);
+
+		//int position_loc = glGetAttribLocation(treeprog->pid, "instancePos");
+		//for (int i = 0; i < TREEMESHSIZE* TREEMESHSIZE; i++)
+		//{
+		//	glVertexAttribPointer(position_loc + i,              // Location
+		//		4, GL_FLOAT, GL_FALSE,       // vec4
+		//		sizeof(vec4),                // Stride
+		//		(void*)(sizeof(vec4) * i));  // Start offset
+		//	assert(glGetError() == GL_NO_ERROR);
+		//	glEnableVertexAttribArray(position_loc + i);
+		//	glVertexAttribDivisor(position_loc + i, 1);
+		//}
+		//glBindVertexArray(0);
+
+		bunny = make_shared<Shape>();
+		bunny->loadMesh(resourceDirectory + "/bunny.obj");
+		bunny->resize();
+		bunny->init();
+		init_bunny_mMatricies();
+
+		initSnow();
+
+		initTex(resourceDirectory);
+	}
+
 	void init(const std::string& resourceDirectory)
 	{
 		GLSL::checkVersion();
@@ -333,9 +386,31 @@ public:
 		bunnyprog->addUniform("V");
 		bunnyprog->addUniform("M");
 		bunnyprog->addUniform("campos");
+		bunnyprog->addUniform("camdir");
+		bunnyprog->addUniform("f");
 		bunnyprog->addAttribute("vertPos");
 		bunnyprog->addAttribute("vertNor");
 		bunnyprog->addAttribute("vertTex");
+
+		//bunny eyes
+		bunnyEyesprog = std::make_shared<Program>();
+		bunnyEyesprog->setVerbose(true);
+		bunnyEyesprog->setShaderNames(resourceDirectory + "/eyes_vertex.glsl", resourceDirectory + "/eyes_fragment.glsl");
+		if (!bunnyEyesprog->init())
+		{
+			std::cerr << "One or more shaders failed to compile... exiting!" << std::endl;
+			exit(1);
+		}
+		bunnyEyesprog->addUniform("P");
+		bunnyEyesprog->addUniform("V");
+		bunnyEyesprog->addUniform("M");
+		bunnyEyesprog->addUniform("Mbunny");
+		bunnyEyesprog->addUniform("campos");
+		bunnyEyesprog->addUniform("camdir");
+		bunnyEyesprog->addUniform("f");
+		bunnyEyesprog->addAttribute("vertPos");
+		bunnyEyesprog->addAttribute("vertNor");
+		bunnyEyesprog->addAttribute("vertTex");
 
 		treeprog = std::make_shared<Program>();
 		treeprog->setVerbose(true);
@@ -348,10 +423,14 @@ public:
 		treeprog->addUniform("P");
 		treeprog->addUniform("V");
 		treeprog->addUniform("M");
+		treeprog->addUniform("camoff");
 		treeprog->addUniform("campos");
+		treeprog->addUniform("camdir");
+		treeprog->addUniform("f");
 		treeprog->addAttribute("vertPos");
 		treeprog->addAttribute("vertNor");
 		treeprog->addAttribute("vertTex");
+		treeprog->addAttribute("instancePos");
 
 		//height
 		heightprog = std::make_shared<Program>();
@@ -367,6 +446,8 @@ public:
 		heightprog->addUniform("M");
 		heightprog->addUniform("camoff");
 		heightprog->addUniform("campos");
+		heightprog->addUniform("camdir");
+		heightprog->addUniform("f");
 		heightprog->addAttribute("vertPos");
 		heightprog->addAttribute("vertTex");
 
@@ -385,6 +466,24 @@ public:
 		skyprog->addAttribute("vertPos");
 		skyprog->addAttribute("vertNor");
 		skyprog->addAttribute("vertTex");
+
+		//snow
+		snowprog = std::make_shared<Program>();
+		snowprog->setVerbose(true);
+		snowprog->setShaderNames(resourceDirectory + "/snow_vertex.glsl", resourceDirectory + "/snow_fragment.glsl");
+		if (!snowprog->init())
+		{
+			std::cerr << "One or more shaders failed to compile... exiting!" << std::endl;
+			exit(1); //make a breakpoint here and check the output window for the error message!
+		}
+		snowprog->addUniform("P");
+		snowprog->addUniform("V");
+		snowprog->addUniform("M");
+		snowprog->addUniform("camoff");
+		snowprog->addUniform("campos");
+		snowprog->addUniform("camdir");
+		snowprog->addUniform("f");
+		snowprog->addAttribute("vertPos");
 	}
 	void render()
 	{
@@ -394,7 +493,6 @@ public:
 		float aspect = width/(float)height;
 		glViewport(0, 0, width, height);
 
-		//glClearColor(0.8f, 0.8f, 1.0f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 		glm::mat4 V, M, P;
@@ -414,27 +512,23 @@ public:
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, Texture2);
 		glDisable(GL_DEPTH_TEST);
-		skySphere->draw(skyprog, FALSE);
+		sphere->draw(skyprog, FALSE);
 		glEnable(GL_DEPTH_TEST);
 		skyprog->unbind();
 
 		//bunnies
-		bunnyprog->bind();
-		glUniformMatrix4fv(bunnyprog->getUniform("P"), 1, GL_FALSE, &P[0][0]);
-		glUniformMatrix4fv(bunnyprog->getUniform("V"), 1, GL_FALSE, &V[0][0]);
-		glUniform3f(bunnyprog->getUniform("campos"), -mycam.pos.x, -mycam.pos.y, -mycam.pos.z);
-
 		static double totalTimePassed = 0;
 		static float initial_yspeed = 5;
 		static float initial_xzspeed = 0.07;
 		static bool jumping = false;
+		glm::mat4 TBunny = glm::translate(glm::mat4(1), glm::vec3(0, 0.5f, 0));
 		
 		float changeInY = initial_yspeed * totalTimePassed + 0.5 * -9.8 * pow(totalTimePassed, 2);
 		float changeInXZ = initial_xzspeed * totalTimePassed;
 		totalTimePassed += frametime;
 		for (int i = 0; i < NUMBUNNIES; i++)
 		{
-			M = bunnyModels[i];
+			M = bunnyModels[i] * TBunny;
 
 			//if jumping, and we are back at where we are before offset (so we are done jumping)
 			if (jumping && M[3].y + changeInY < M[3].y)
@@ -446,9 +540,9 @@ public:
 			//if jumping, and we should continue with our jump
 			else if (jumping)
 			{
-				M[3].x += 0.05 + dirs[i][0]*changeInXZ;
+				M[3].x += 0.05 + dirs[i][0] * changeInXZ;
 				M[3].y += changeInY;
-				M[3].z += 0.05 + dirs[i][1]*changeInXZ;
+				M[3].z += 0.05 + dirs[i][1] * changeInXZ;
 				bunnyModels[i][3].x = M[3].x;
 				bunnyModels[i][3].z = M[3].z;
 			}
@@ -462,24 +556,63 @@ public:
 					dirs[i] = normalize(vec2(-mycam.pos.x - M[3].x, -mycam.pos.z - M[3].z));
 				}
 			}
+			bunnyprog->bind();
+			glUniformMatrix4fv(bunnyprog->getUniform("P"), 1, GL_FALSE, &P[0][0]);
+			glUniformMatrix4fv(bunnyprog->getUniform("V"), 1, GL_FALSE, &V[0][0]);
+			glUniform3f(bunnyprog->getUniform("campos"), -mycam.pos.x, -mycam.pos.y, -mycam.pos.z);
+			glUniform3f(bunnyprog->getUniform("camdir"), mycam.dir.x, mycam.dir.y, mycam.dir.z);
+			glUniform1i(bunnyprog->getUniform("f"), mycam.f);
 			glUniformMatrix4fv(bunnyprog->getUniform("M"), 1, GL_FALSE, &M[0][0]);
+			
 			bunny->draw(bunnyprog, FALSE);
+			bunnyprog->unbind();
+			//bunny eyes
+			bunnyEyesprog->bind();
+			glUniformMatrix4fv(bunnyEyesprog->getUniform("P"), 1, GL_FALSE, &P[0][0]);
+			glUniformMatrix4fv(bunnyEyesprog->getUniform("V"), 1, GL_FALSE, &V[0][0]);
+			glUniformMatrix4fv(bunnyEyesprog->getUniform("Mbunny"), 1, GL_FALSE, &M[0][0]);
+			glUniform3f(bunnyEyesprog->getUniform("campos"), -mycam.pos.x, -mycam.pos.y, -mycam.pos.z);
+			glUniform3f(bunnyEyesprog->getUniform("camdir"), mycam.dir.x, mycam.dir.y, mycam.dir.z);
+			glUniform1i(bunnyEyesprog->getUniform("f"), mycam.f);			
+
+			mat4 SE = scale(mat4(1.0f), vec3(0.1, 0.1, 0.1));
+			mat4 TR = translate(mat4(1.0f), vec3(-.95, 0.3, 0.3));
+			glm::mat4 M1 = M * TR;
+			M = M1 * SE;
+			glUniformMatrix4fv(bunnyEyesprog->getUniform("M"), 1, GL_FALSE, &M[0][0]);
+			sphere->draw(bunnyEyesprog, FALSE);
+			mat4 TL = translate(mat4(1.0f), vec3(0.3, 0, 0.25));
+			glm::mat4 M2 = M1 * TL;
+			M = M2 * SE;
+			glUniformMatrix4fv(bunnyEyesprog->getUniform("M"), 1, GL_FALSE, &M[0][0]);
+			sphere->draw(bunnyEyesprog, FALSE);
+			bunnyEyesprog->unbind();
 		}
-		bunnyprog->unbind();
 
 		//tree
 		treeprog->bind();
 		glUniformMatrix4fv(treeprog->getUniform("P"), 1, GL_FALSE, &P[0][0]);
 		glUniformMatrix4fv(treeprog->getUniform("V"), 1, GL_FALSE, &V[0][0]);
+		glUniform3f(treeprog->getUniform("camoff"), ((int)(-mycam.pos.x/ TREEDISTANCE)* TREEDISTANCE), 0, ((int)(-mycam.pos.z / TREEDISTANCE) * TREEDISTANCE));
 		glUniform3f(treeprog->getUniform("campos"), -mycam.pos.x, -mycam.pos.y, -mycam.pos.z);
+		glUniform3f(treeprog->getUniform("camdir"), mycam.dir.x, mycam.dir.y, mycam.dir.z);
+		glUniform1i(treeprog->getUniform("f"), mycam.f);
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, Texture3);
-		for (int i = 0; i < NUMTREES; i++)
-		{	
-			M = treeModels[i];
-			glUniformMatrix4fv(treeprog->getUniform("M"), 1, GL_FALSE, &M[0][0]);
-			tree->draw(treeprog, FALSE);
-		}
+		for (int x = -TREEMESHSIZE/2; x < TREEMESHSIZE/2; x++)
+			for (int z = -TREEMESHSIZE/2; z < TREEMESHSIZE/2; z++)
+			{
+				glm::mat4 STree = glm::scale(glm::mat4(1.0f), glm::vec3(3, 3, 3));
+				glm::mat4 Trans = glm::translate(glm::mat4(1), glm::vec3(x * TREEDISTANCE, 3, z * TREEDISTANCE));
+				M = Trans * STree;
+				glUniformMatrix4fv(treeprog->getUniform("M"), 1, GL_FALSE, &M[0][0]);
+				tree->draw(treeprog, FALSE);
+			}
+		//glm::mat4 Trans = glm::translate(glm::mat4(1), glm::vec3(0, 0, -3));
+		//M = Trans;
+		//glUniformMatrix4fv(treeprog->getUniform("M"), 1, GL_FALSE, &M[0][0]);
+		//glDrawElementsInstanced(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, (void*)0, TREEMESHSIZE*TREEMESHSIZE);
+		//tree->drawInstanced(treeprog, FALSE);
 		treeprog->unbind();
 
 		//terrain
@@ -487,16 +620,14 @@ public:
 		glUniformMatrix4fv(heightprog->getUniform("P"), 1, GL_FALSE, &P[0][0]);
 		glUniformMatrix4fv(heightprog->getUniform("V"), 1, GL_FALSE, &V[0][0]);
 
-		glm::mat4 TransY = glm::translate(glm::mat4(1.0f), glm::vec3(-50.0f, -0.91f, -50));
+		glm::mat4 TransY = glm::translate(glm::mat4(1.0f), glm::vec3(-50.0f, 0, -50));
 		M = TransY;
+
 		glUniformMatrix4fv(heightprog->getUniform("M"), 1, GL_FALSE, &M[0][0]);
-		
-		vec3 offset = mycam.pos;
-		offset.y = 0;
-		offset.x = (int)offset.x;
-		offset.z = (int)offset.z;
-		glUniform3fv(heightprog->getUniform("camoff"), 1, &offset[0]);
+		glUniform3f(heightprog->getUniform("camoff"), (int)-mycam.pos.x, 0, (int)-mycam.pos.z);
 		glUniform3f(heightprog->getUniform("campos"), -mycam.pos.x, -mycam.pos.y, -mycam.pos.z);
+		glUniform3f(heightprog->getUniform("camdir"), mycam.dir.x, mycam.dir.y, mycam.dir.z);
+		glUniform1i(heightprog->getUniform("f"), mycam.f);
 		glBindVertexArray(VertexArrayID);
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, IndexBufferIDBox);
 		glActiveTexture(GL_TEXTURE0);
@@ -504,29 +635,23 @@ public:
 		glDrawElements(GL_TRIANGLES, MESHSIZE*MESHSIZE*6, GL_UNSIGNED_SHORT, (void*)0);
 
 		heightprog->unbind();
-			   		 	  	  	   	
 
+		snowprog->bind();
+		glBindVertexArray(SnowArrayID);
+		glUniformMatrix4fv(snowprog->getUniform("P"), 1, GL_FALSE, &P[0][0]);
+		glUniformMatrix4fv(snowprog->getUniform("V"), 1, GL_FALSE, &V[0][0]);
+		glUniform3f(snowprog->getUniform("campos"), -mycam.pos.x, -mycam.pos.y, -mycam.pos.z);
+		glUniform3f(snowprog->getUniform("camdir"), mycam.dir.x, mycam.dir.y, mycam.dir.z);
+		glUniform1i(snowprog->getUniform("f"), mycam.f);
+		mat4 S12 = scale(mat4(1), vec3(100, 5, 100));
+		mat4 T12 = translate(mat4(1), vec3(0, 3, 0));
+		M = T12 * S12;
 
-
-
-		//glm::mat4 TBunny = glm::translate(glm::mat4(1), glm::vec3(0, 0, -3));
-		//
-
-		//vec2 a = vec2(0, 1);
-		//vec2 b = vec2(-mycam.pos.x - TBunny[3].x, -mycam.pos.z - TBunny[3].z);
-
-		//float angl = acos(dot(a, b) / (length(a) * length(b)));
-
-		//mat4 Vi = transpose(V);
-		///*Vi[0][3] = 0;
-		//Vi[1][3] = 0;
-		//Vi[2][3] = 0;*/
-		//// ((float)M_PI / 7.5f) + 
-		//glm::mat4 RBunny = glm::rotate(glm::mat4(1), angl, glm::vec3(0, 1, 0));
-
-		//M = TBunny * Vi;
-		//glUniformMatrix4fv(bunnyprog->getUniform("M"), 1, GL_FALSE, &M[0][0]);
-		//bunny->draw(bunnyprog, FALSE);
+		glUniformMatrix4fv(snowprog->getUniform("M"), 1, GL_FALSE, &M[0][0]);
+		glPointSize(3);
+		glDrawArrays(GL_POINTS, 0, NUMSNOW);
+		snowprog->unbind();
+		glBindVertexArray(0);
 	}
 };
 //******************************************************************************************
@@ -535,6 +660,7 @@ int main(int argc, char **argv)
 	std::string resourceDir = "../resources";
 	if (argc >= 2)
 		resourceDir = argv[1];
+
 	srand(0);
 	Application *application = new Application();
 	WindowManager * windowManager = new WindowManager();
@@ -545,7 +671,7 @@ int main(int argc, char **argv)
 	application->init(resourceDir);
 	application->initGeom();
 
-	while(! glfwWindowShouldClose(windowManager->getHandle()))
+	while(!glfwWindowShouldClose(windowManager->getHandle()))
 	{
 		application->render();
 		glfwSwapBuffers(windowManager->getHandle());

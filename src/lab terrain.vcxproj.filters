@@ -53,5 +53,17 @@
     <None Include="..\resources\tree_vertex.glsl">
       <Filter>shaders</Filter>
     </None>
+    <None Include="..\resources\eyes_fragment.glsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="..\resources\eyes_vertex.glsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="..\resources\snow_fragment.glsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="..\resources\snow_vertex.glsl">
+      <Filter>shaders</Filter>
+    </None>
   </ItemGroup>
 </Project>

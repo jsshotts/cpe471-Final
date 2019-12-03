@@ -5,8 +5,11 @@
 #include "Program.h"
 #define TINYOBJLOADER_IMPLEMENTATION
 #include "tiny_obj_loader.h"
+#include <glm\detail\type_vec.hpp>
+#include <glm/gtc/type_ptr.hpp>
 
 using namespace std;
+using namespace glm;
 
 
 void Shape::loadMesh(const string &meshName, string *mtlpath, unsigned char *(loadimage)(char const *, int *, int *, int *, int))
@@ -34,12 +37,14 @@ void Shape::loadMesh(const string &meshName, string *mtlpath, unsigned char *(lo
 		posBuf = new std::vector<float>[shapes.size()];
 		norBuf = new std::vector<float>[shapes.size()];
 		texBuf = new std::vector<float>[shapes.size()];
+		insBuf = new std::vector<glm::vec4>[shapes.size()];
 		eleBuf = new std::vector<unsigned int>[shapes.size()];
-
+		
 		eleBufID = new unsigned int[shapes.size()];
 		posBufID = new unsigned int[shapes.size()];
 		norBufID = new unsigned int[shapes.size()];
 		texBufID = new unsigned int[shapes.size()];
+		insBufID = new unsigned int[shapes.size()];
 		vaoID = new unsigned int[shapes.size()];
 		materialIDs = new unsigned int[shapes.size()];
 
@@ -58,7 +63,6 @@ void Shape::loadMesh(const string &meshName, string *mtlpath, unsigned char *(lo
 				materialIDs[i] = shapes[i].mesh.material_ids[0];
 			else
 				materialIDs[i] = -1;
-
 		}
 	}
 	//material:
@@ -160,10 +164,7 @@ void Shape::resize()
 void Shape::init()
 {
 	for (int i = 0; i < obj_count; i++)
-
 	{
-
-
 		// Initialize the vertex array object
 		glGenVertexArrays(1, &vaoID[i]);
 		glBindVertexArray(vaoID[i]);
@@ -209,6 +210,38 @@ void Shape::init()
 		assert(glGetError() == GL_NO_ERROR);
 	}
 }
+
+void Shape::initInstance(const shared_ptr<Program> prog, const int size, const int distance)
+{
+	Shape::init();
+
+	glBindVertexArray(vaoID[0]);
+	instanceSize = size*size;
+	glm::vec4* instBuf = new glm::vec4[size * size];
+
+	int i = 0;
+	for (int x = -size / 2; x < size / 2; x++)
+		for (int z = -size / 2; z < size / 2; z++)
+		{
+			instBuf[i] = glm::vec4(x * distance, 3, z * distance, 1);
+			i++;
+		}
+	glGenBuffers(1, &insBufID[0]);
+	glBindBuffer(GL_ARRAY_BUFFER, insBufID[0]);
+	glBufferData(GL_ARRAY_BUFFER, instanceSize * sizeof(glm::vec4), instBuf, GL_STATIC_DRAW);
+	
+	int position_loc = glGetAttribLocation(prog->pid, "instancePos");
+	for (int i = 0; i < instanceSize; i++)
+	{
+		glVertexAttribPointer(position_loc + i,              // Location
+			4, GL_FLOAT, GL_FALSE,       // vec4
+			sizeof(vec4),                // Stride
+			(void*)(sizeof(vec4) * i));  // Start offset
+		assert(glGetError() == GL_NO_ERROR);
+		glEnableVertexAttribArray(position_loc + i);
+		glVertexAttribDivisor(position_loc + i, 1);
+	}	
+}
 void Shape::draw(const shared_ptr<Program> prog,bool use_extern_texures) const
 {
 	for (int i = 0; i < obj_count; i++)
@@ -249,7 +282,6 @@ void Shape::draw(const shared_ptr<Program> prog,bool use_extern_texures) const
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, eleBufID[i]);
 
 		//texture
-		
 		if (!use_extern_texures)
 		{
 			int textureindex = materialIDs[i];
@@ -259,8 +291,76 @@ void Shape::draw(const shared_ptr<Program> prog,bool use_extern_texures) const
 				glBindTexture(GL_TEXTURE_2D, textureIDs[textureindex]);
 			}
 		}
+
 		// Draw
 		glDrawElements(GL_TRIANGLES, (int)eleBuf[i].size(), GL_UNSIGNED_INT, (const void *)0);
+
+		// Disable and unbind
+		if (h_tex != -1)
+		{
+			GLSL::disableVertexAttribArray(h_tex);
+		}
+		if (h_nor != -1)
+		{
+			GLSL::disableVertexAttribArray(h_nor);
+		}
+		GLSL::disableVertexAttribArray(h_pos);
+		glBindBuffer(GL_ARRAY_BUFFER, 0);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+	}
+}
+void Shape::drawInstanced(const shared_ptr<Program> prog, bool use_extern_texures) const
+{
+	for (int i = 0; i < obj_count; i++)
+	{
+		int h_pos, h_nor, h_tex;
+		h_pos = h_nor = h_tex = -1;
+
+		glBindVertexArray(vaoID[i]);
+		// Bind position buffer
+		h_pos = prog->getAttribute("vertPos");
+		GLSL::enableVertexAttribArray(h_pos);
+		glBindBuffer(GL_ARRAY_BUFFER, posBufID[i]);
+		glVertexAttribPointer(h_pos, 3, GL_FLOAT, GL_FALSE, 0, (const void*)0);
+
+		// Bind normal buffer
+		h_nor = prog->getAttribute("vertNor");
+		if (h_nor != -1 && norBufID[i] != 0)
+		{
+			GLSL::enableVertexAttribArray(h_nor);
+			glBindBuffer(GL_ARRAY_BUFFER, norBufID[i]);
+			glVertexAttribPointer(h_nor, 3, GL_FLOAT, GL_FALSE, 0, (const void*)0);
+		}
+
+		if (texBufID[i] != 0)
+		{
+			// Bind texcoords buffer
+			h_tex = prog->getAttribute("vertTex");
+			if (h_tex != -1 && texBufID[i] != 0)
+			{
+				GLSL::enableVertexAttribArray(h_tex);
+				glBindBuffer(GL_ARRAY_BUFFER, texBufID[i]);
+				glVertexAttribPointer(h_tex, 2, GL_FLOAT, GL_FALSE, 0, (const void*)0);
+			}
+		}
+
+		// Bind element buffer
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, eleBufID[i]);
+
+		//texture
+		if (!use_extern_texures)
+		{
+			int textureindex = materialIDs[i];
+			if (textureindex >= 0)
+			{
+				glActiveTexture(GL_TEXTURE0);
+				glBindTexture(GL_TEXTURE_2D, textureIDs[textureindex]);
+			}
+		}
+
+		// Draw
+		glDrawElementsInstanced(GL_TRIANGLES, (int)eleBuf[i].size(), GL_UNSIGNED_INT, (void*)0, instanceSize);
+		//glDrawElements(GL_TRIANGLES, (int)eleBuf[i].size(), GL_UNSIGNED_INT, (const void*)0);
 
 		// Disable and unbind
 		if (h_tex != -1)

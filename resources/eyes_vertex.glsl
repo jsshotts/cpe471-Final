@@ -6,6 +6,7 @@ layout(location = 2) in vec2 vertTex;
 uniform mat4 P;
 uniform mat4 V;
 uniform mat4 M;
+uniform mat4 Mbunny;
 out vec3 vertex_pos;
 out vec3 vertex_normal;
 out vec2 vertex_tex;
@@ -63,7 +64,7 @@ vec3 getNormal(vec3 pos)
 void main()
 {
 	mat4 Model = M;
-	Model[3][1] += getHeight(Model[3].xyz);
+	Model[3][1] += getHeight(Mbunny[3].xyz);
 
 	vec4 tpos = Model * vec4(vertPos, 1.0);
 	

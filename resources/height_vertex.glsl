@@ -8,7 +8,6 @@ uniform mat4 M;
 out vec3 vertex_pos;
 out vec2 vertex_tex;
 out vec3 vertex_normal;
-uniform sampler2D tex;
 
 uniform vec3 camoff;
 
@@ -40,8 +39,9 @@ float noise(vec3 position, int octaves, float frequency, float persistence) {
 }
 float getHeight(vec3 pos)
 {
-	float height = noise(pos.xzy, 11, 0.015, 0.6);
-	float baseheight = noise(pos.xzy, 4, 0.05, 0.4);
+	pos.y = 0;
+	float height = noise(pos, 11, 0.015, 0.6);
+	float baseheight = noise(pos, 4, 0.05, 0.4);
 	//baseheight = pow(baseheight, 1)*3;
 	height = baseheight*height;
 	return height *= 20;
@@ -61,17 +61,14 @@ vec3 getNormal(vec3 pos)
     vec3 ac = a-c;
 	vec3 bc = b-c;
 
-    return cross(ac.xyz,bc.xyz);
+    return normalize(-cross(ac.xyz,bc.xyz));
 }
 
 void main()
 {
-	vec2 texcoords=vertTex;
-	float t=1./100.;
-	texcoords -= vec2(camoff.x,camoff.z)*t;
 	vec4 tpos =  vec4(vertPos, 1.0);
-	tpos.z -= camoff.z;
-	tpos.x -= camoff.x;
+	tpos.z += camoff.z;
+	tpos.x += camoff.x;
 
 	tpos =  M * tpos;
 	tpos.y += getHeight(tpos.xyz);
@@ -80,5 +77,5 @@ void main()
 
 	vertex_pos = tpos.xyz;
 	vertex_tex = vertTex;
-	vertex_normal = getNormal(vertex_pos);
+	vertex_normal = getNormal(tpos.xyz);
 }

@@ -37,12 +37,16 @@
     <ClInclude Include="WindowManager.h" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="..\resources\eyes_fragment.glsl" />
+    <None Include="..\resources\eyes_vertex.glsl" />
     <None Include="..\resources\height_frag.glsl" />
     <None Include="..\resources\height_vertex.glsl" />
     <None Include="..\resources\bunny_fragment.glsl" />
     <None Include="..\resources\bunny_vertex.glsl" />
     <None Include="..\resources\sky_fragment.glsl" />
     <None Include="..\resources\sky_vertex.glsl" />
+    <None Include="..\resources\snow_fragment.glsl" />
+    <None Include="..\resources\snow_vertex.glsl" />
     <None Include="..\resources\tree_fragment.glsl" />
     <None Include="..\resources\tree_vertex.glsl" />
   </ItemGroup>
