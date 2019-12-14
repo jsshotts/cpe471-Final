@@ -5,6 +5,7 @@ in vec2 vertex_tex;
 in vec3 vertex_normal;
 
 uniform sampler2D tex;
+uniform sampler2D tex2;
 
 uniform vec3 camoff;
 uniform vec3 campos;
@@ -31,48 +32,34 @@ void main()
 	float epsilon = innerCutoff - outerCutoff;
 	float theta = dot(lightDir, normalize(-camdir));
 	float intensity = clamp((theta - outerCutoff) / epsilon, 0.0, 1.0);
-	//intensity = pow(intensity, 2);
-	//intensity = 1.0f;
 
 	//diffuse
-		vec3 n = normalize(vertex_normal);
-		vec3 ld = normalize(lpMoon - vertex_pos);
-		float diffuse = clamp(dot(n, ld), 0, 1);
+	vec3 n = normalize(vertex_normal);
+	vec3 ld = normalize(lpMoon - vertex_pos);
+	float diffuse = clamp(dot(n, ld), 0, 1);
 
-		//specular
-		vec3 cd = normalize(campos - vertex_pos);
-		vec3 h = normalize(cd+ld);
-		float spec = dot(n,h);
-		spec = clamp(spec,0,1);
-		spec = pow(spec, 500);
+	//specular
+	vec3 cd = normalize(campos - vertex_pos);
+	vec3 h = normalize(cd+ld);
+	float spec = dot(n,h);
+	spec = clamp(spec,0,1);
+	spec = pow(spec, 500);
 
-		//final
-		color.rgb = baseColor * (0.05 + diffuse * 0.3) + lightColor*spec*0.05;
-		color.a = 1;
-	if (theta > outerCutoff && f == 1)
-	{
-		vec3 ld2 = normalize(lpFl - vertex_pos);
-		float diffuse2 = clamp(dot(n, ld2), 0, 1);
-		diffuse2 *= intensity;
-//
-//		vec3 cd = normalize(campos - vertex_pos);
-//		vec3 h = normalize(cd+ld);
-//		float spec = dot(n,h);
-//		spec = clamp(spec,0,1);
-//		spec = pow(spec, 10);
-//		spec *= intensity;
-
-		color.rgb += Flcolor * diffuse2 * 0.7 + baseColor * intensity * 0.2;;// + Flcolor * spec * 0.3;
-		//color.rgb = vec3(intensity, intensity, intensity);1/length(campos - vertex_pos)*20 * 
-		color.a = 1;
-	}
-	else
-	{	
-		
-	}
+	//final
+	color.rgb = baseColor * (0.05 + diffuse * 0.3) + lightColor*spec*0.05;
 	float len = length(campos.xz - vertex_pos.xz);
 	len-=41;
 	len/=8.;
 	len=clamp(len,0,1);
 	color.a=1-len;
+
+	//flashlight
+	if (theta > outerCutoff && f == 1)
+	{
+		vec3 ld2 = normalize(lpFl - vertex_pos);
+		float diffuse2 = clamp(dot(n, ld2), 0, 1);
+		diffuse2 *= intensity;
+
+		color.rgb += Flcolor * diffuse2 * 0.7 + baseColor * intensity * 0.2;
+	}	
 }

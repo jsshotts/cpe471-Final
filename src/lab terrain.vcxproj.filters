@@ -65,5 +65,11 @@
     <None Include="..\resources\snow_vertex.glsl">
       <Filter>shaders</Filter>
     </None>
+    <None Include="..\resources\FBO_fragment.glsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="..\resources\FBO_vertex.glsl">
+      <Filter>shaders</Filter>
+    </None>
   </ItemGroup>
 </Project>

@@ -1,7 +1,6 @@
 #version 330 core
 layout(location = 0) in vec3 vertPos;
 layout(location = 1) in vec3 vertNor;
-layout(location = 2) in vec2 vertTex;
 
 uniform mat4 P;
 uniform mat4 V;
@@ -63,13 +62,12 @@ vec3 getNormal(vec3 pos)
 void main()
 {
 	mat4 Model = M;
-	Model[3][1] += getHeight(Model[3].xyz);
+
+	Model[3][1] += getHeight(vec3(Model[3].x, 0, Model[3].z)); // I don't know why this doesn't work
 
 	vec4 tpos = Model * vec4(vertPos, 1.0);
 	
 	gl_Position = P * V * tpos;
 	vertex_normal = vec4(Model * vec4(vertNor,0.0)).xyz;
 	vertex_pos = tpos.xyz;
-	vertex_tex = vertTex;
-	//vertex_normal = getNormal(vertex_pos);
 }

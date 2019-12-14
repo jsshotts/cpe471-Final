@@ -72,5 +72,4 @@ void main()
 	vertex_normal = vec4(Model * vec4(vertNor,0.0)).xyz;
 	vertex_pos = tpos.xyz;
 	vertex_tex = vertTex;
-	//vertex_normal = getNormal(vertex_pos);
 }

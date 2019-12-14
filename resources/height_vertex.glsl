@@ -71,10 +71,9 @@ void main()
 	tpos.x += camoff.x;
 
 	tpos =  M * tpos;
-	tpos.y += getHeight(tpos.xyz);
+	tpos.y += getHeight(vec3(tpos.x, 0, tpos.z));
 
 	gl_Position = P * V * tpos;
-
 	vertex_pos = tpos.xyz;
 	vertex_tex = vertTex;
 	vertex_normal = getNormal(tpos.xyz);

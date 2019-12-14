@@ -65,7 +65,7 @@ void main()
 	trans = int(trans * 1000) % 10;
 	Model[3][0] += trans;
 	Model[3][2] -= trans;
-	Model[3][1] += getHeight(Model[3].xyz);
+	Model[3][1] += getHeight(vec3(Model[3].x, 0, Model[3].z));
 	
 	vec4 tpos = Model * vec4(vertPos, 1.0);
 	
